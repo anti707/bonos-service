@@ -11,15 +11,17 @@ Comparte la base de datos y el JWT con casino-backend. Permite:
 Prefijo de rutas: /api/bonos  (para que nginx pueda enrutar por prefijo).
 """
 import os
+import time #añadido
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, status #añadido
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .auth import usuario_actual
 from .db import conexion, dict_cursor, esperar_bd, init_schema
 
+START_TIME = time.time() #añadido para medir el tiempo de arranque, útil para Kubernetes y EKS. Se puede eliminar si no se va a usar.
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -53,9 +55,42 @@ class ReclamarRequest(BaseModel):
     monto_base: float = Field(default=0, ge=0, description="Base para bonos por porcentaje")
 
 
-# TODO (alumno): implementar las rutas de salud que usará Kubernetes:
-#   - liveness: ¿el proceso está vivo? (respuesta simple).
-#   - readiness: ¿está listo para recibir tráfico? Debe verificar la BD.
+#añadido: endpoints de liveness/readiness para Kubernetes (EKS)
+@app.get("/livez", status_code=200)
+def liveness():
+    """¿El proceso está vivo? (Respuesta simple e idéntica a Node.js)."""
+    uptime_seconds = time.time() - START_TIME
+    return {
+        "status": "alive", 
+        "uptime": uptime_seconds
+    }
+@app.get("/readyz")
+def readiness():
+    """¿Está listo para recibir tráfico? Verifica la conexión a PostgreSQL."""
+    try:
+        # Usamos el context manager 'conexion' que ya tienes importado arriba
+        with conexion() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT 1;")
+                cursor.fetchone()
+                
+        return {
+            "status": "ready", 
+            "db": "up"
+        }
+        
+    except Exception as err:
+        # Si la base de datos no responde, devolvemos un código 503 (Service Unavailable)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "status": "not-ready",
+                "db": "down",
+                "error": str(err)
+            }
+        )
+#añadido    
+
 # Luego configurar livenessProbe/readinessProbe en el Deployment de EKS.
 
 

@@ -55,7 +55,7 @@ class ReclamarRequest(BaseModel):
     monto_base: float = Field(default=0, ge=0, description="Base para bonos por porcentaje")
 
 
-#añadido: endpoints de liveness/readiness para Kubernetes (EKS)
+#añadido
 @app.get("/livez", status_code=200)
 def liveness():
     """¿El proceso está vivo? (Respuesta simple e idéntica a Node.js)."""
@@ -68,7 +68,6 @@ def liveness():
 def readiness():
     """¿Está listo para recibir tráfico? Verifica la conexión a PostgreSQL."""
     try:
-        # Usamos el context manager 'conexion' que ya tienes importado arriba
         with conexion() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("SELECT 1;")
@@ -80,7 +79,6 @@ def readiness():
         }
         
     except Exception as err:
-        # Si la base de datos no responde, devolvemos un código 503 (Service Unavailable)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={
